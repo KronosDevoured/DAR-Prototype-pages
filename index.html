@@ -238,7 +238,7 @@
       apply(parseFloat(slider.value)||0);
     })();
 
-    // Canvas joystick (pointer capture + long-press relocate, drag-follow)
+    // Canvas joystick (no long-press convert if started inside)
     attachCanvasJoystickHandlers();
 
     window.addEventListener('resize',windowResized);
@@ -423,49 +423,63 @@
     return createVector(dx,dy);
   }
   function attachCanvasJoystickHandlers(){
-    let activeId=null, pressT=0;
-    canvas.addEventListener('pointerdown',e=>{
-      pressT=performance.now();
-      if(inJoyLoose(e.clientX,e.clientY)){
-        try{e.target.setPointerCapture(e.pointerId);}catch(_){}
-        activeId=e.pointerId; joyActive=true; joyVec=vecFromJoyPx(e.clientX,e.clientY);
+    let activeId = null;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      const inside = inJoyLoose(e.clientX, e.clientY);
+
+      try { e.target.setPointerCapture(e.pointerId); } catch(_) {}
+      activeId = e.pointerId;
+
+      if (inside) {
+        // NORMAL JOYSTICK DRAG — no conversion to relocate on long-press
+        joyActive = true;
+        joyVec = vecFromJoyPx(e.clientX, e.clientY);
 
         // L1: start averaged capture on first touch
-        if(level===1 && !l1CapActive){
-          l1StartCapture();
-        }
-      }else{
-        activeId=e.pointerId; relocating=true; // start relocating immediately outside ring
-        JOY_CENTER=createVector(e.clientX,e.clientY);
+        if (level === 1 && !l1CapActive) l1StartCapture();
+      } else {
+        // REPOSITION MODE only if the press STARTS OUTSIDE the stick
+        relocating = true;
+        JOY_CENTER = createVector(e.clientX, e.clientY);
         positionJoyHint();
       }
       e.preventDefault();
-    },{passive:false});
-    canvas.addEventListener('pointermove',e=>{
-      if(activeId!==e.pointerId) return;
-      const heldLong = (performance.now()-pressT)>=JOY_LONGPRESS_MS;
-      if(!relocating && joyActive && heldLong){
-        // convert to relocation (long-press anywhere)
-        relocating=true; joyActive=false; joyVec=null;
-      }
-      if(relocating){
-        JOY_CENTER=createVector(e.clientX,e.clientY); // live drag-follow
+    }, { passive:false });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (activeId !== e.pointerId) return;
+
+      if (relocating) {
+        // Drag-to-reposition follows the finger
+        JOY_CENTER = createVector(e.clientX, e.clientY);
         positionJoyHint();
-      }else if(joyActive){
-        joyVec=vecFromJoyPx(e.clientX,e.clientY);
+      } else if (joyActive) {
+        // Normal joystick movement
+        joyVec = vecFromJoyPx(e.clientX, e.clientY);
       }
       e.preventDefault();
-    },{passive:false});
+    }, { passive:false });
+
     function endPtr(e){
-      if(activeId!==e.pointerId) return;
-      try{canvas.releasePointerCapture(e.pointerId);}catch(_){}
-      if(joyActive){joyActive=false; joyVec=null;}
-      // finalize L1 capture on release
-      if(level===1 && l1CapActive) l1FinalizeCapture();
-      relocating=false; activeId=null; e.preventDefault();
+      if (activeId !== e.pointerId) return;
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+
+      // Stop joystick input
+      if (joyActive) {
+        joyActive = false;
+        joyVec = null;
+        // L1: finalize averaged capture on release
+        if (level === 1 && l1CapActive) l1FinalizeCapture();
+      }
+      // Stop relocation if it was active
+      relocating = false;
+
+      activeId = null;
+      e.preventDefault();
     }
-    canvas.addEventListener('pointerup',endPtr,{passive:false});
-    canvas.addEventListener('pointercancel',endPtr,{passive:false});
+    canvas.addEventListener('pointerup', endPtr, { passive:false });
+    canvas.addEventListener('pointercancel', endPtr, { passive:false });
   }
 
   /* ===== Level 1 averaged capture ===== */
@@ -475,7 +489,7 @@
   function l1FeedCapture(dx,dy){
     // Exponential weighting: earlier samples count more
     const age = millis()-l1CapStart;
-    const tau = Math.max(20, HOLD_TO_ARC_MS*0.6); // tune if you want stronger bias
+    const tau = Math.max(20, HOLD_TO_ARC_MS*0.6);
     const w = Math.exp(-age / tau);
     l1Cap.x += dx*w; l1Cap.y += dy*w; l1Cap.w += w;
   }
@@ -483,18 +497,15 @@
     if(!l1CapActive) return;
     l1CapActive=false;
 
-    // If nothing meaningful captured, count as a weak miss
     if(l1Cap.w<=0){ scoreTotal++; updateScore({text:'Miss',good:false}); spawnTarget(); updateScore(); return; }
 
     const avgx=l1Cap.x/l1Cap.w, avgy=l1Cap.y/l1Cap.w;
     const mag=Math.hypot(avgx,avgy);
     if(mag<STICK_MIN_MAG*0.9){ scoreTotal++; updateScore({text:'Miss (weak flick)',good:false}); spawnTarget(); updateScore(); return; }
 
-    // Reuse evaluator (applies invertUD + spin + relative angle)
     l1EvaluateFromAveragedVector(avgx,avgy);
   }
   function l1EvaluateFromAveragedVector(dx,dy){
-    // raw stick angle from averaged vec (screen coords), then map to world
     const raw=Math.atan2( (invertUD ? dy : -dy), dx);
     const spin=l1CurrentSpinAngle();
     const thWorld=spin+mirrorY(raw);
