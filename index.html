@@ -41,6 +41,11 @@
   #l1SpinLabel{font:600 13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e8e8ea;background:#181a20;border:1px solid #3a3d45;border-radius:999px;padding:2px 8px;white-space:nowrap;margin-left:4px}
   #l1SpinSlider{position:absolute;left:0;top:22px;-webkit-appearance:slider-vertical;writing-mode:bt-lr;width:30px;height:220px;margin:0;background:transparent}
 
+  /* L2 vertical target-size slider — flush left */
+  #l2SizeContainer{position:fixed;left:0;top:32%;transform:translateY(-50%);z-index:12;display:none;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:auto}
+  #l2SizeLabel{font:600 13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e8e8ea;background:#181a20;border:1px solid #3a3d45;border-radius:999px;padding:2px 8px;white-space:nowrap;margin-left:4px}
+  #l2SizeSlider{position:absolute;left:0;top:22px;-webkit-appearance:slider-vertical;writing-mode:bt-lr;width:30px;height:220px;margin:0;background:transparent}
+
   #level2hud,#level3hud{align-items:center;gap:.5rem}
 
   /* Joy reposition hint bubble */
@@ -77,6 +82,12 @@
   <div id="l1SpinContainer">
     <div id="l1SpinLabel">Spin: 0 (stationary)</div>
     <input id="l1SpinSlider" type="range" min="0" max="1" step="0.01" value="0" />
+  </div>
+
+  <!-- L2 target-size slider (vertical, flush left) -->
+  <div id="l2SizeContainer">
+    <div id="l2SizeLabel">Target Ø: 56px</div>
+    <input id="l2SizeSlider" type="range" min="36" max="120" step="1" value="56" />
   </div>
 
   <!-- Score/result -->
@@ -169,10 +180,10 @@
   // Target radius bands (applied to L1 and L2)
   const TARGET_R_MIN=140, TARGET_R_MAX=220;
 
-  // L2 tuning — bigger & closer targets
+  // L2 tuning — target size is adjustable
   let L2_SPIN_PERIOD_MS=1150;
   const L2_TOL_DEG=10,L2_HOLD_MS=1500,ROUND_MS=10000;
-  const L2_TARGET_DIAM=56;
+  let L2_TARGET_DIAM=56; // <-- now dynamic via slider
   let l2TargetAngle=0, l2TargetR=180;
 
   // L3 tuning
@@ -219,6 +230,8 @@
       document.getElementById('hud').classList.toggle('hidden',!show);
       const l1spin=document.getElementById('l1SpinContainer');
       if(l1spin) l1spin.style.display=(level===1 && show)?'flex':'none';
+      const l2size=document.getElementById('l2SizeContainer');
+      if(l2size) l2size.style.display=(level===2 && show)?'flex':'none';
     }
     menuBtn.addEventListener('click',e=>{e.stopPropagation();chromeShown=!chromeShown;setChromeShown(chromeShown);});
 
@@ -281,6 +294,23 @@
       apply(parseFloat(slider.value)||0);
     })();
 
+    // L2 target-size slider (vertical)
+    (function initL2SizeSlider(){
+      const slider=document.getElementById('l2SizeSlider'),label=document.getElementById('l2SizeLabel');
+      if(!slider||!label) return;
+      function apply(px){
+        L2_TARGET_DIAM = Math.max(36, Math.min(120, px|0));
+        label.textContent = `Target Ø: ${L2_TARGET_DIAM}px`;
+        // Keep current target clamped to screen when size changes
+        if(level===2){
+          const fit=fitTargetAtAngle(l2TargetAngle,l2TargetR, (L2_TARGET_DIAM/2)+24);
+          l2TargetR=fit.r;
+        }
+      }
+      slider.addEventListener('input',()=>apply(parseFloat(slider.value)||56));
+      apply(parseFloat(slider.value)||56);
+    })();
+
     // Canvas joystick + pinch zoom
     attachCanvasJoystickHandlers();
 
@@ -306,7 +336,7 @@
       target.r=fit.r; target.x=fit.x; target.y=fit.y;
     }
     if(level===2){
-      const fit=fitTargetAtAngle(l2TargetAngle,l2TargetR, L2_TARGET_DIAM/2 + 24);
+      const fit=fitTargetAtAngle(l2TargetAngle,l2TargetR, (L2_TARGET_DIAM/2)+24);
       l2TargetR=fit.r;
     }
     if(level===3){clampCourseForScreen();}
@@ -323,9 +353,14 @@
     document.getElementById('level3hud').style.display=(n===3)?'flex':'none';
     document.getElementById('spinControls').style.display=(n===2||n===3)?'flex':'none';
     document.getElementById('l1Diff').style.display=(n===1)?'flex':'none';
+
+    // show left-edge vertical slider for the active level
     const l1spin=document.getElementById('l1SpinContainer');
+    const l2size=document.getElementById('l2SizeContainer');
     const chromeShown=!document.getElementById('menuBtn').classList.contains('active');
     if(l1spin) l1spin.style.display=(n===1 && chromeShown)?'flex':'none';
+    if(l2size) l2size.style.display=(n===2 && chromeShown)?'flex':'none';
+
     const spinRange=document.getElementById('spinRange'),spinValue=document.getElementById('spinValue'),spinLabelPrefix=document.getElementById('spinLabelPrefix');
     if(spinRange&&spinValue){const val=(n===2?L2_SPIN_PERIOD_MS:L3_SPIN_PERIOD_MS)/1000; spinRange.value=val.toFixed(2); spinValue.textContent=val.toFixed(2)+' s/rot'; spinLabelPrefix.textContent=(n===2?'L2 Spin':'L3 Spin');}
     updateTempoTag(); restart(); showGoal();
@@ -418,14 +453,13 @@
     const preferred = random(TARGET_R_MIN, TARGET_R_MAX);
     const fit=fitTargetAtAngle(angle,preferred,L1_TARGET_RADIUS+8);
     target={angle,r:fit.r,x:fit.x,y:fit.y};
-    // don't clear l1HitDot here—let the previous shot indicator linger
   }
 
-  // L2: spawn in the same philosophy (band + clamp)
+  // L2: spawn in the same philosophy (band + clamp), size from slider
   function spawnL2Target(){
     l2TargetAngle = random(-Math.PI, Math.PI);
     const preferred = random(TARGET_R_MIN, TARGET_R_MAX);
-    const fit = fitTargetAtAngle(l2TargetAngle, preferred, L2_TARGET_DIAM/2 + 24);
+    const fit = fitTargetAtAngle(l2TargetAngle, preferred, (L2_TARGET_DIAM/2) + 24);
     l2TargetR = fit.r;
   }
 
@@ -595,7 +629,6 @@
   /* ===== Level 1 averaged capture ===== */
   function l1StartCapture(){
     l1CapActive=true; l1CapStart=millis(); l1Cap={x:0,y:0,w:0};
-    // don't clear l1HitDot here — show last hit until it expires
   }
   function l1FeedCapture(dx,dy){
     const age = millis()-l1CapStart;
@@ -620,13 +653,11 @@
     const spin=l1CurrentSpinAngle();
     const hitAngle=spin+mirrorY(raw);
 
-    // Hit dot at the same distance as the on-screen arrow tip:
-    // (arrow is drawn from center with length ARROW_LEN in world units)
+    // Hit dot at the same distance as the on-screen arrow tip
     const hx = center.x + Math.cos(hitAngle) * ARROW_LEN;
     const hy = center.y + Math.sin(hitAngle) * ARROW_LEN;
     l1HitDot = {x: hx, y: hy, until: millis()+1600};
 
-    // Accuracy judged vs target angle only (same as before)
     let err=hitAngle - target.angle;
     while(err>Math.PI) err-=2*Math.PI;
     while(err<-Math.PI) err+=2*Math.PI;
@@ -752,7 +783,7 @@
     const mag=Math.hypot(smJoy.x,smJoy.y), active=mag>STICK_MIN_MAG;
     drawSquareColored(center,spin);
 
-    // target (bigger & closer)
+    // target (size = L2_TARGET_DIAM via slider)
     const tx=center.x+Math.cos(l2TargetAngle)*l2TargetR, ty=center.y+Math.sin(l2TargetAngle)*l2TargetR;
     noStroke();fill('#ffd166');circle(tx,ty,L2_TARGET_DIAM);
 
