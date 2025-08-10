@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>dar-prototype — GitHub Pages</title>
 <style>
+  /* Global reset + disable text selection/touch callouts */
   html,body{margin:0;padding:0;background:#0e0f12;color:#e8e8ea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;height:100%;overscroll-behavior:none}
+  *{user-select:none;-webkit-user-select:none;-ms-user-select:none;-webkit-touch-callout:none}
   canvas{position:fixed;inset:0;z-index:0;touch-action:none}
   #ui{position:fixed;inset:auto 0 0 0;display:flex;gap:.5rem;align-items:center;padding:.6rem .8rem;background:linear-gradient(180deg,rgba(14,15,18,0),rgba(14,15,18,.7) 30%,rgba(14,15,18,.9));backdrop-filter:blur(6px);z-index:10;pointer-events:auto;flex-wrap:wrap}
   .btn{border:1px solid #3a3d45;padding:.45rem .7rem;border-radius:999px;background:#181a20;color:#e8e8ea;font-weight:600;letter-spacing:.2px}
@@ -34,14 +36,14 @@
   #goalCard .actions{display:flex;gap:.5rem;margin-top:.6rem}
   #goalCard .actions .btn{padding:.35rem .6rem}
 
-  /* L1 vertical spin slider — flush left, raised higher */
+  /* L1 vertical spin slider — flush left */
   #l1SpinContainer{position:fixed;left:0;top:32%;transform:translateY(-50%);z-index:12;display:none;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:auto}
   #l1SpinLabel{font:600 13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e8e8ea;background:#181a20;border:1px solid #3a3d45;border-radius:999px;padding:2px 8px;white-space:nowrap;margin-left:4px}
   #l1SpinSlider{position:absolute;left:0;top:22px;-webkit-appearance:slider-vertical;writing-mode:bt-lr;width:30px;height:220px;margin:0;background:transparent}
 
   #level2hud,#level3hud{align-items:center;gap:.5rem}
 
-  /* Joy hint bubble */
+  /* Joy reposition hint bubble */
   #joyHint{
     position:fixed; z-index:13; pointer-events:none;
     background:rgba(24,26,32,.92); border:1px solid #3a3d45; color:#cfd3dc;
@@ -49,6 +51,10 @@
     transform:translate(-50%,-50%); opacity:0; transition:opacity .25s ease;
   }
   #joyHint.show{opacity:1;}
+
+  /* Zoom slider group */
+  .zoomGroup{display:flex;gap:.5rem;align-items:center}
+  #zoomRange{width:160px}
 </style>
 </head>
 <body>
@@ -65,7 +71,7 @@
   </div>
 
   <!-- Joy reposition hint -->
-  <div id="joyHint">Hold anywhere to reposition the stick</div>
+  <div id="joyHint">Hold outside the stick for 0.25s to reposition</div>
 
   <!-- L1 spin slider (vertical, flush left) -->
   <div id="l1SpinContainer">
@@ -101,10 +107,18 @@
       <button id="rollL" class="btn" type="button">Air Roll Right</button>
       <button id="rollR" class="btn active" type="button">Air Roll Left</button>
       <button id="swapUD" class="btn" type="button">Swap U/D</button>
-      <button id="clear" class="btn" type="button">Clear Trails</button>
       <button id="restart" class="btn" type="button">Restart</button>
       <button id="hintBtn" class="btn" type="button">Hint</button>
       <div class="grow"></div>
+
+      <!-- Zoom controls -->
+      <div class="zoomGroup">
+        <button id="zoomOut" class="btn" type="button" title="Zoom out">Zoom −</button>
+        <input id="zoomRange" type="range" min="0.5" max="1.5" step="0.01" value="1.00" />
+        <button id="zoomIn" class="btn" type="button" title="Zoom in">Zoom +</button>
+        <span class="tag" id="zoomTag">Zoom 1.00×</span>
+      </div>
+
       <div id="l1Diff">
         <label for="diffRange" class="tag">L1 Difficulty</label>
         <input id="diffRange" type="range" min="1" max="5" step="1" value="3" />
@@ -141,17 +155,27 @@
 
   /* =================== Game constants =================== */
   const SQUARE_HALF=24,CLEARANCE=4,ARROW_LEN=110;
-  const JOY_BASE_R=88,JOY_KNOB_R=28,JOY_LONGPRESS_MS=1200;
+  const JOY_BASE_R=88,JOY_KNOB_R=28;
   const STICK_TAU_MS=38,ARROW_TAU_MS=55,STICK_MIN_MAG=8;
   const COL_UP='#ff5c5c',COL_RIGHT='#4c8dff',COL_DOWN='#53d769',COL_LEFT='#ffd166';
   const GOAL_MS = 3000; // auto-hide for auto-shown hints
   const JOY_HINT_MS = 4500;
 
   // Level tuning
-  let L1_TOL_DEG=10,L1_TARGET_RADIUS=22,HOLD_TO_ARC_MS=100; // HOLD_TO_ARC_MS drives capture window
+  let L1_TOL_DEG=10,L1_TARGET_RADIUS=22,HOLD_TO_ARC_MS=100;
   let L1_SPIN_PERIOD_MS=0,l1StartMs=0;
-  const TARGET_DIST=220,FEEDBACK_MS=600;
-  let L2_SPIN_PERIOD_MS=1150; const L2_TOL_DEG=10,L2_HOLD_MS=1500,ROUND_MS=10000;
+  const FEEDBACK_MS=600;
+
+  // Target radius bands (applied to L1 and L2)
+  const TARGET_R_MIN=140, TARGET_R_MAX=220;
+
+  // L2 tuning — bigger & closer targets
+  let L2_SPIN_PERIOD_MS=1150;
+  const L2_TOL_DEG=10,L2_HOLD_MS=1500,ROUND_MS=10000;
+  const L2_TARGET_DIAM=56;
+  let l2TargetAngle=0, l2TargetR=180;
+
+  // L3 tuning
   let L3_SPIN_PERIOD_MS=1150,L3_GOAL_R=32,L3_LIVES_START=3;
   const L3_OBS_COUNT=5,L3_OBS_R_MIN=26,L3_OBS_R_MAX=48,L3_MARGIN=40,L3_MIN_GAP=140;
   let L3_MAX_SPEED=220,L3_ACCEL=520,L3_DAMPING_S=1.6;
@@ -160,14 +184,23 @@
   let airRoll=+1,center,level=1,JOY_CENTER,joyActive=false,joyVec=null,relocating=false;
   let smJoy={x:0,y:0},arrowAngleRender=0,lastFrameT,currentSpinAngle=0;
   let target=null,scoreHits=0,scoreTotal=0;
-  let l2StartMs=0,l2TargetAngle=0,l2TargetR=260,l2HoldMs=0,l2ArrowActive=false;
+  let l2StartMs=0,l2HoldMs=0,l2ArrowActive=false;
   let l3Pos,l3Goal,l3Obstacles=[],l3Lives=L3_LIVES_START,l3Dist=0,l3ArrowActive=false,l3Vel=null;
 
-  // L1 averaged capture state
+  // L1 averaged capture state + hit dot
   let l1CapActive=false, l1CapStart=0, l1Cap = {x:0,y:0,w:0};
+  let l1HitDot=null; // {x,y,until}
 
   // Hint state
   let joyHintUntil=0;
+
+  // View (zoom)
+  let viewScale = 1.0;
+  const VIEW_MIN = 0.5, VIEW_MAX = 1.5, VIEW_STEP = 0.1;
+
+  // Pinch state
+  const touches = new Map(); // id -> {x,y}
+  let pinchStartDist = 0, pinchStartScale = 1;
 
   // Setting: invert Up/Down mapping
   let invertUD=false;
@@ -192,8 +225,15 @@
     // Buttons
     bind('level1',()=>setLevel(1)); bind('level2',()=>setLevel(2)); bind('level3',()=>setLevel(3));
     bind('rollL',()=>setRoll(-1));  bind('rollR',()=>setRoll(+1));
-    bind('clear',()=>{ /* no-op visual trails placeholder */ });
     bind('restart',()=>restart());
+
+    // Zoom buttons + slider
+    bind('zoomIn',()=>{ setZoom(viewScale+VIEW_STEP); });
+    bind('zoomOut',()=>{ setZoom(viewScale-VIEW_STEP); });
+    const zoomRange=document.getElementById('zoomRange');
+    if(zoomRange){
+      zoomRange.addEventListener('input',()=> setZoom(parseFloat(zoomRange.value)||1));
+    }
 
     const swapBtn=document.getElementById('swapUD');
     swapBtn.addEventListener('click',e=>{
@@ -213,7 +253,7 @@
       });
     }
 
-    // L1 Difficulty slider (tunes tolerance, target size, capture window)
+    // L1 Difficulty slider
     const diffRange=document.getElementById('diffRange'),diffTag=document.getElementById('diffTag');
     if(diffRange){
       const apply=()=>{
@@ -221,12 +261,15 @@
         const tol=14-(d-1)*2,rad=28-(d-1)*2.5,win=[0,160,130,100,85,70][d];
         L1_TOL_DEG=tol; L1_TARGET_RADIUS=Math.round(rad); HOLD_TO_ARC_MS=win;
         diffTag.textContent=`Tol ${tol}° • Radius ${Math.round(rad)} • Window ${win}ms`;
-        if(level===1 && target){const fit=fitTargetAtAngle(target.angle,TARGET_DIST,L1_TARGET_RADIUS+8);target.x=fit.x;target.y=fit.y;}
+        if(level===1 && target){
+          const fit=fitTargetAtAngle(target.angle,target.r,L1_TARGET_RADIUS+8);
+          target.r=fit.r; target.x=fit.x; target.y=fit.y;
+        }
       };
       diffRange.addEventListener('input',apply); apply();
     }
 
-    // L1 spin slider (vertical, 0=stop; else map 0..1 => 3.0..0.5 s/rot)
+    // L1 spin slider (vertical)
     (function initL1EdgeSlider(){
       const slider=document.getElementById('l1SpinSlider'),label=document.getElementById('l1SpinLabel');
       if(!slider||!label) return;
@@ -238,7 +281,7 @@
       apply(parseFloat(slider.value)||0);
     })();
 
-    // Canvas joystick (no long-press convert if started inside)
+    // Canvas joystick + pinch zoom
     attachCanvasJoystickHandlers();
 
     window.addEventListener('resize',windowResized);
@@ -258,8 +301,14 @@
     resizeCanvas(window.innerWidth,window.innerHeight);
     center=createVector(width/2,height/2);
     if(!relocating) JOY_CENTER=createVector(110,Math.max(140,height-170));
-    if(level===1 && target){const fit=fitTargetAtAngle(target.angle,TARGET_DIST,L1_TARGET_RADIUS+8);target.x=fit.x;target.y=fit.y;}
-    if(level===2){const fit=fitTargetAtAngle(l2TargetAngle,l2TargetR,24);l2TargetR=fit.r;}
+    if(level===1 && target){
+      const fit=fitTargetAtAngle(target.angle,target.r, L1_TARGET_RADIUS+8);
+      target.r=fit.r; target.x=fit.x; target.y=fit.y;
+    }
+    if(level===2){
+      const fit=fitTargetAtAngle(l2TargetAngle,l2TargetR, L2_TARGET_DIAM/2 + 24);
+      l2TargetR=fit.r;
+    }
     if(level===3){clampCourseForScreen();}
     positionJoyHint();
   }
@@ -287,7 +336,7 @@
   function updateTempoTag(){const tempo=document.getElementById('tempoTag'); if(!tempo) return; const s=(level===2?L2_SPIN_PERIOD_MS:L3_SPIN_PERIOD_MS)/1000; tempo.textContent=`Tempo ${s.toFixed(2)} s/rot`; }
 
   function goalTextFor(lv){
-    if(lv===1) return {title:'Level 1 — Quick Aim',text:'A target spawns around the square. Flick toward it quickly. Your aim is averaged over a short window (earlier movement counts more), then judged against the target.'};
+    if(lv===1) return {title:'Level 1 — Quick Aim',text:'A target spawns near the square. Flick toward it quickly. Your aim is averaged over a short window (earlier movement counts more), then judged against the target.'};
     if(lv===2) return {title:'Level 2 — Match the Spin',text:'The square spins. Use the joystick to aim your arrow at the yellow target. Hold on target long enough to lock it. The spin changes your aim — counter the rotation.'};
     return {title:'Level 3 — Navigate the Course',text:'Push the joystick to set a heading relative to the spinning square. Avoid obstacles and reach the green goal before you run out of lives.'};
   }
@@ -334,9 +383,9 @@
     if(millis()>joyHintUntil) el.classList.remove('show');
   }
   function positionJoyHint(){
-    const el=document.getElementById('joyHint');
     const x=JOY_CENTER.x + (JOY_BASE_R+18);
     const y=JOY_CENTER.y - (JOY_BASE_R+18);
+    const el=document.getElementById('joyHint');
     el.style.left=x+'px'; el.style.top=y+'px';
   }
 
@@ -362,18 +411,35 @@
     const valid=cand.filter(Number.isFinite);const maxR=valid.length?Math.min(...valid):desiredR;const rUsed=Math.max(0,Math.min(desiredR,maxR));
     return {r:rUsed,x:cx+rUsed*c,y:cy+rUsed*s};
   }
-  function spawnTarget(){const angle=random(-Math.PI,Math.PI);const fit=fitTargetAtAngle(angle,TARGET_DIST,L1_TARGET_RADIUS+8);target={angle,x:fit.x,y:fit.y};}
+
+  // L1: spawn in a defined radius band around center, clamped to screen
+  function spawnTarget(){
+    const angle=random(-Math.PI,Math.PI);
+    const preferred = random(TARGET_R_MIN, TARGET_R_MAX);
+    const fit=fitTargetAtAngle(angle,preferred,L1_TARGET_RADIUS+8);
+    target={angle,r:fit.r,x:fit.x,y:fit.y};
+    // don't clear l1HitDot here—let the previous shot indicator linger
+  }
+
+  // L2: spawn in the same philosophy (band + clamp)
+  function spawnL2Target(){
+    l2TargetAngle = random(-Math.PI, Math.PI);
+    const preferred = random(TARGET_R_MIN, TARGET_R_MAX);
+    const fit = fitTargetAtAngle(l2TargetAngle, preferred, L2_TARGET_DIAM/2 + 24);
+    l2TargetR = fit.r;
+  }
 
   function restart(){
     joyActive=false; joyVec=null; smJoy.x=0; smJoy.y=0; arrowAngleRender=0;
     l1CapActive=false; l1CapStart=0; l1Cap={x:0,y:0,w:0};
+    l1HitDot=null; // clear on restart only
     const res=document.getElementById('result'); if(res) res.style.display='none';
 
     if(level===1){
       scoreHits=0; scoreTotal=0; updateScore(); spawnTarget(); l1StartMs=millis();
     } else if(level===2){
       l2StartMs=millis(); l2HoldMs=0; l2ArrowActive=false;
-      l2TargetAngle=random(-Math.PI,Math.PI); const fit=fitTargetAtAngle(l2TargetAngle,260,24); l2TargetR=fit.r;
+      spawnL2Target();
       document.getElementById('aimTag').textContent='Aim —';
     } else {
       l3Dist=0; l3Lives=L3_LIVES_START; l3ArrowActive=false;
@@ -409,7 +475,7 @@
     const lv=document.getElementById('livesTag'); if(lv) lv.textContent=`Lives ${l3Lives}`;
   }
 
-  /* =================== Joystick (touch) =================== */
+  /* =================== Joystick (touch) + Pinch Zoom =================== */
   function inJoyLoose(x,y){
     const dx=x-JOY_CENTER.x, dy=y-JOY_CENTER.y;
     const r2=dx*dx+dy*dy, loose=(JOY_BASE_R+28);
@@ -422,60 +488,104 @@
     const m=Math.hypot(dx,dy); if(m>JOY_BASE_R){const k=JOY_BASE_R/(m||1); dx*=k; dy*=k;}
     return createVector(dx,dy);
   }
+  function setZoom(z){
+    viewScale = Math.max(VIEW_MIN, Math.min(VIEW_MAX, z));
+    const tag = document.getElementById('zoomTag');
+    if(tag) tag.textContent = `Zoom ${viewScale.toFixed(2)}×`;
+    const zr = document.getElementById('zoomRange');
+    if(zr && Math.abs((parseFloat(zr.value)||1) - viewScale) > 1e-3){
+      zr.value = viewScale.toFixed(2);
+    }
+  }
+  function distance(p1,p2){const dx=p1.x-p2.x,dy=p1.y-p2.y;return Math.hypot(dx,dy);}
+
   function attachCanvasJoystickHandlers(){
+    const RELOCATE_HOLD_MS = 250; // must hold outside for 0.25s to start reposition
     let activeId = null;
+    let holdTimer = null;
+    let pressedOutside = false;
 
     canvas.addEventListener('pointerdown', (e) => {
-      const inside = inJoyLoose(e.clientX, e.clientY);
-
       try { e.target.setPointerCapture(e.pointerId); } catch(_) {}
+      touches.set(e.pointerId, {x:e.clientX,y:e.clientY});
+
+      if (touches.size >= 2){
+        // Begin pinch
+        const [a,b] = [...touches.values()];
+        pinchStartDist = distance(a,b);
+        pinchStartScale = viewScale;
+        clearTimeout(holdTimer);
+        pressedOutside = false;
+        return;
+      }
+
       activeId = e.pointerId;
+      const inside = inJoyLoose(e.clientX, e.clientY);
+      pressedOutside = !inside;
 
       if (inside) {
-        // NORMAL JOYSTICK DRAG — no conversion to relocate on long-press
+        // joystick only
         joyActive = true;
         joyVec = vecFromJoyPx(e.clientX, e.clientY);
-
-        // L1: start averaged capture on first touch
         if (level === 1 && !l1CapActive) l1StartCapture();
       } else {
-        // REPOSITION MODE only if the press STARTS OUTSIDE the stick
-        relocating = true;
-        JOY_CENTER = createVector(e.clientX, e.clientY);
-        positionJoyHint();
+        // require a short hold before entering relocate mode
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+          if (pressedOutside && activeId === e.pointerId){
+            relocating = true;
+            JOY_CENTER = createVector(e.clientX, e.clientY);
+            positionJoyHint();
+          }
+        }, RELOCATE_HOLD_MS);
       }
       e.preventDefault();
     }, { passive:false });
 
     canvas.addEventListener('pointermove', (e) => {
-      if (activeId !== e.pointerId) return;
+      const t = touches.get(e.pointerId);
+      if(t){ t.x=e.clientX; t.y=e.clientY; }
 
-      if (relocating) {
-        // Drag-to-reposition follows the finger
+      if (touches.size >= 2){
+        // Pinch zoom
+        const [a,b] = [...touches.values()];
+        const cur = distance(a,b);
+        if (pinchStartDist>0){
+          const factor = cur / pinchStartDist;
+          setZoom( pinchStartScale * factor );
+        }
+        return;
+      }
+
+      if (relocating){
         JOY_CENTER = createVector(e.clientX, e.clientY);
         positionJoyHint();
-      } else if (joyActive) {
-        // Normal joystick movement
+      } else if (joyActive && activeId === e.pointerId){
         joyVec = vecFromJoyPx(e.clientX, e.clientY);
       }
       e.preventDefault();
     }, { passive:false });
 
     function endPtr(e){
-      if (activeId !== e.pointerId) return;
       try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+      touches.delete(e.pointerId);
 
-      // Stop joystick input
-      if (joyActive) {
+      if (touches.size < 2){
+        pinchStartDist = 0;
+      }
+
+      clearTimeout(holdTimer);
+      pressedOutside = false;
+
+      if (joyActive && activeId === e.pointerId){
         joyActive = false;
         joyVec = null;
-        // L1: finalize averaged capture on release
         if (level === 1 && l1CapActive) l1FinalizeCapture();
       }
-      // Stop relocation if it was active
-      relocating = false;
-
-      activeId = null;
+      if (activeId === e.pointerId){
+        relocating = false;
+        activeId = null;
+      }
       e.preventDefault();
     }
     canvas.addEventListener('pointerup', endPtr, { passive:false });
@@ -485,9 +595,9 @@
   /* ===== Level 1 averaged capture ===== */
   function l1StartCapture(){
     l1CapActive=true; l1CapStart=millis(); l1Cap={x:0,y:0,w:0};
+    // don't clear l1HitDot here — show last hit until it expires
   }
   function l1FeedCapture(dx,dy){
-    // Exponential weighting: earlier samples count more
     const age = millis()-l1CapStart;
     const tau = Math.max(20, HOLD_TO_ARC_MS*0.6);
     const w = Math.exp(-age / tau);
@@ -508,20 +618,24 @@
   function l1EvaluateFromAveragedVector(dx,dy){
     const raw=Math.atan2( (invertUD ? dy : -dy), dx);
     const spin=l1CurrentSpinAngle();
-    const thWorld=spin+mirrorY(raw);
+    const hitAngle=spin+mirrorY(raw);
 
-    let err=thWorld - target.angle;
+    // Hit dot at the same distance as the on-screen arrow tip:
+    // (arrow is drawn from center with length ARROW_LEN in world units)
+    const hx = center.x + Math.cos(hitAngle) * ARROW_LEN;
+    const hy = center.y + Math.sin(hitAngle) * ARROW_LEN;
+    l1HitDot = {x: hx, y: hy, until: millis()+1600};
+
+    // Accuracy judged vs target angle only (same as before)
+    let err=hitAngle - target.angle;
     while(err>Math.PI) err-=2*Math.PI;
     while(err<-Math.PI) err+=2*Math.PI;
     const errDeg=Math.abs(degrees(err));
 
     scoreTotal++;
-    if(errDeg<=L1_TOL_DEG){
-      scoreHits++;
-      updateScore({text:'Hit!',good:true});
-    }else{
-      updateScore({text:`Miss (${errDeg.toFixed(0)}°)`,good:false});
-    }
+    if(errDeg<=L1_TOL_DEG){ scoreHits++; updateScore({text:'Hit!',good:true}); }
+    else{ updateScore({text:`Miss (${errDeg.toFixed(0)}°)`,good:false}); }
+
     updateScore();
     spawnTarget();
   }
@@ -580,8 +694,21 @@
     const tx=(joyVec?joyVec.x:0), ty=(joyVec?joyVec.y:0);
     smJoy.x+=(tx-smJoy.x)*a; smJoy.y+=(ty-smJoy.y)*a;
 
-    background('#0e0f12'); drawGrid();
+    background('#0e0f12');
+
+    // ---- Begin scene zoom transform (game world only) ----
+    push();
+    translate(center.x, center.y);
+    ctx.scale(viewScale, viewScale);
+    translate(-center.x, -center.y);
+
+    drawGrid();
     if(level===1) runLevel1(dt); else if(level===2) runLevel2(dt); else runLevel3(dt);
+
+    pop();
+    // ---- End scene zoom transform ----
+
+    // UI elements drawn at 1:1
     drawJoystick();
     maybeHideJoyHint();
 
@@ -599,7 +726,17 @@
     drawSquareColored(center,spin);
 
     // target & helper line
-    if(target){noStroke();fill('#ffd166');circle(target.x,target.y,L1_TARGET_RADIUS*2);stroke('#5a5a5a');strokeWeight(2);line(center.x,center.y,target.x,target.y);}
+    if(target){
+      noStroke();fill('#ffd166');circle(target.x,target.y,L1_TARGET_RADIUS*2);
+      stroke('#5a5a5a');strokeWeight(2);line(center.x,center.y,target.x,target.y);
+    }
+
+    // show last hit dot if active (with outline so it pops)
+    if(l1HitDot && millis() < l1HitDot.until){
+      stroke('#ffffff'); strokeWeight(3);
+      fill('#53d769'); circle(l1HitDot.x, l1HitDot.y, 14);
+    }
+
     // arrow only while touching (visualization)
     if(joyActive&&joyVec){
       const raw=Math.atan2( (invertUD ? smJoy.y : -smJoy.y), smJoy.x);
@@ -615,8 +752,9 @@
     const mag=Math.hypot(smJoy.x,smJoy.y), active=mag>STICK_MIN_MAG;
     drawSquareColored(center,spin);
 
+    // target (bigger & closer)
     const tx=center.x+Math.cos(l2TargetAngle)*l2TargetR, ty=center.y+Math.sin(l2TargetAngle)*l2TargetR;
-    noStroke();fill('#ffd166');circle(tx,ty,40);
+    noStroke();fill('#ffd166');circle(tx,ty,L2_TARGET_DIAM);
 
     if(active){
       const thStick=Math.atan2( (invertUD ? smJoy.y : -smJoy.y), smJoy.x);
@@ -636,8 +774,7 @@
     updateTempoTag();
     if(l2HoldMs>=L2_HOLD_MS || (t-l2StartMs>ROUND_MS)){
       l2StartMs=millis(); l2HoldMs=0;
-      l2TargetAngle=random(-Math.PI,Math.PI);
-      const fit=fitTargetAtAngle(l2TargetAngle,260,24); l2TargetR=fit.r;
+      spawnL2Target();
     }
   }
 
