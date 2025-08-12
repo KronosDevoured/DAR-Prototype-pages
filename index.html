@@ -363,6 +363,12 @@
 
     const spinRange=document.getElementById('spinRange'),spinValue=document.getElementById('spinValue'),spinLabelPrefix=document.getElementById('spinLabelPrefix');
     if(spinRange&&spinValue){const val=(n===2?L2_SPIN_PERIOD_MS:L3_SPIN_PERIOD_MS)/1000; spinRange.value=val.toFixed(2); spinValue.textContent=val.toFixed(2)+' s/rot'; spinLabelPrefix.textContent=(n===2?'L2 Spin':'L3 Spin');}
+
+    /* ---- PATCH: Show L1 score only on Level 1 ---- */
+    const scoreEl = document.getElementById('score');
+    if (scoreEl) scoreEl.style.display = (n === 1) ? 'inline-block' : 'none';
+    /* --------------------------------------------- */
+
     updateTempoTag(); restart(); showGoal();
     showJoyHint(JOY_HINT_MS * 0.75);
   }
@@ -869,4 +875,4 @@
   setup();
   </script>
 </body>
-</html>
+</html>>
