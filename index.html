@@ -9,6 +9,8 @@
   html,body{margin:0;padding:0;background:#0e0f12;color:#e8e8ea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;height:100%;overscroll-behavior:none}
   *{user-select:none;-webkit-user-select:none;-ms-user-select:none;-webkit-touch-callout:none}
   canvas{position:fixed;inset:0;z-index:0;touch-action:none}
+
+  /* Bottom controls bar */
   #ui{position:fixed;inset:auto 0 0 0;display:flex;gap:.5rem;align-items:center;padding:.6rem .8rem;background:linear-gradient(180deg,rgba(14,15,18,0),rgba(14,15,18,.7) 30%,rgba(14,15,18,.9));backdrop-filter:blur(6px);z-index:10;pointer-events:auto;flex-wrap:wrap}
   .btn{border:1px solid #3a3d45;padding:.45rem .7rem;border-radius:999px;background:#181a20;color:#e8e8ea;font-weight:600;letter-spacing:.2px}
   .btn.active{background:#0066ff;border-color:#4c8dff}
@@ -19,9 +21,10 @@
   .tag.bad{border-color:#ff5c5c;color:#ffd3d3}
   .hidden{display:none!important}
 
-  #scoreHud{position:fixed;top:.6rem;left:.6rem;z-index:15;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;pointer-events:none}
-  #hud{position:fixed;top:.6rem;left:.6rem;right:.6rem;display:flex;gap:.75rem;align-items:center;z-index:11;pointer-events:none;flex-wrap:wrap}
+  /* Top HUD row (score + per-level HUDs) */
+  #hud{position:fixed;top:.6rem;left:.6rem;right:.6rem;z-index:11;pointer-events:none;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
 
+  /* Hamburger */
   #menuBtn{position:fixed;top:.6rem;right:.6rem;z-index:16;width:44px;height:44px;border-radius:12px;border:1px solid #3a3d45;background:#181a20;display:grid;place-items:center;box-shadow:0 2px 10px rgba(0,0,0,.25)}
   #menuBtn .bar{display:block;width:20px;height:2px;background:#e8e8ea;margin:3px 0}
   #menuBtn.active{background:#0066ff;border-color:#4c8dff}
@@ -29,6 +32,7 @@
   #spinControls,#l1Diff{display:none;align-items:center;gap:.5rem}
   input[type=range]{accent-color:#4c8dff}
 
+  /* Hint/Goal panel — now persistent until “Got it” */
   #goalPanel{position:fixed;top:0;left:0;right:0;z-index:20;pointer-events:auto;display:flex;justify-content:center;padding:.75rem}
   #goalCard{pointer-events:auto;max-width:680px;width:calc(100% - 1.2rem);background:rgba(24,26,32,.92);border:1px solid #3a3d45;border-radius:14px;padding:.8rem 1rem;box-shadow:0 8px 24px rgba(0,0,0,.35)}
   #goalCard h3{margin:.1rem 0 .35rem 0;font-size:1rem}
@@ -46,9 +50,10 @@
   #l2SizeLabel{font:600 13px system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e8e8ea;background:#181a20;border:1px solid #3a3d45;border-radius:999px;padding:2px 8px;white-space:nowrap;margin-left:4px}
   #l2SizeSlider{position:absolute;left:0;top:22px;-webkit-appearance:slider-vertical;writing-mode:bt-lr;width:30px;height:220px;margin:0;background:transparent}
 
+  /* Per-level HUD chips */
   #level2hud,#level3hud{align-items:center;gap:.5rem}
 
-  /* Joy reposition hint bubble */
+  /* Joy reposition hint bubble (still timed) */
   #joyHint{
     position:fixed; z-index:13; pointer-events:none;
     background:rgba(24,26,32,.92); border:1px solid #3a3d45; color:#cfd3dc;
@@ -57,7 +62,7 @@
   }
   #joyHint.show{opacity:1;}
 
-  /* Zoom slider group */
+  /* Zoom slider */
   .zoomGroup{display:flex;gap:.5rem;align-items:center}
   #zoomRange{width:160px}
 </style>
@@ -67,6 +72,7 @@
     <span class="bar"></span><span class="bar"></span><span class="bar"></span>
   </button>
 
+  <!-- Hint/Goal panel (stays until “Got it”) -->
   <div id="goalPanel" class="hidden">
     <div id="goalCard">
       <h3 id="goalTitle">Level Goal</h3>
@@ -90,18 +96,16 @@
     <input id="l2SizeSlider" type="range" min="36" max="120" step="1" value="56" />
   </div>
 
-  <!-- Score/result -->
-  <div id="scoreHud">
+  <!-- Unified top HUD row (prevents overlap) -->
+  <div id="hud">
     <div id="score" class="tag">Score 0 / 0</div>
     <div id="result" class="tag" style="display:none;"></div>
-  </div>
 
-  <!-- Level HUDs -->
-  <div id="hud">
     <div id="level2hud" style="display:none;">
       <span class="tag" id="tempoTag">Tempo 1.15 s/rot</span>
       <span class="tag" id="aimTag">Aim —</span>
     </div>
+
     <div id="level3hud" style="display:none;">
       <span class="tag" id="speedTag">Speed 0 px/s</span>
       <span class="tag" id="distTag">Dist 0 m</span>
@@ -109,7 +113,7 @@
     </div>
   </div>
 
-  <!-- Controls -->
+  <!-- Bottom controls -->
   <div id="ui">
     <div class="row">
       <button id="level1" class="btn active" type="button">Level 1</button>
@@ -135,6 +139,7 @@
         <input id="diffRange" type="range" min="1" max="5" step="1" value="3" />
         <span class="tag" id="diffTag">Tol 10° • Radius 22 • Window 100ms</span>
       </div>
+
       <div id="spinControls">
         <label for="spinRange"><span id="spinLabelPrefix">L2 Spin</span> (s/rot, min=1.15):</label>
         <input id="spinRange" type="range" min="1.15" max="3.00" step="0.05" value="1.15" />
@@ -169,7 +174,6 @@
   const JOY_BASE_R=88,JOY_KNOB_R=28;
   const STICK_TAU_MS=38,ARROW_TAU_MS=55,STICK_MIN_MAG=8;
   const COL_UP='#ff5c5c',COL_RIGHT='#4c8dff',COL_DOWN='#53d769',COL_LEFT='#ffd166';
-  const GOAL_MS = 3000; // auto-hide for auto-shown hints
   const JOY_HINT_MS = 4500;
 
   // Level tuning
@@ -183,7 +187,7 @@
   // L2 tuning — target size is adjustable
   let L2_SPIN_PERIOD_MS=1150;
   const L2_TOL_DEG=10,L2_HOLD_MS=1500,ROUND_MS=10000;
-  let L2_TARGET_DIAM=56; // <-- now dynamic via slider
+  let L2_TARGET_DIAM=56;
   let l2TargetAngle=0, l2TargetR=180;
 
   // L3 tuning
@@ -192,17 +196,17 @@
   let L3_MAX_SPEED=220,L3_ACCEL=520,L3_DAMPING_S=1.6;
 
   // State
-  let airRoll=+1,center,level=1,JOY_CENTER,joyActive=false,joyVec=null,relocating=false;
+  let airRoll=+1,center,level=1,lastLevel=1,JOY_CENTER,joyActive=false,joyVec=null,relocating=false;
   let smJoy={x:0,y:0},arrowAngleRender=0,lastFrameT,currentSpinAngle=0;
   let target=null,scoreHits=0,scoreTotal=0;
   let l2StartMs=0,l2HoldMs=0,l2ArrowActive=false;
-  let l3Pos,l3Goal,l3Obstacles=[],l3Lives=L3_LIVES_START,l3Dist=0,l3ArrowActive=false,l3Vel=null;
+  let l3Pos,l3Goal,l3Obstacles=[],l3Lives=L3_LIVES_START,l3Dist=0,l3ArrowActive=false,l3Vel=null,l3CrashLockUntil=0;
 
   // L1 averaged capture state + hit dot
   let l1CapActive=false, l1CapStart=0, l1Cap = {x:0,y:0,w:0};
   let l1HitDot=null; // {x,y,until}
 
-  // Hint state
+  // Hint state (bubble)
   let joyHintUntil=0;
 
   // View (zoom)
@@ -222,15 +226,16 @@
     center=createVector(width/2,height/2);
     JOY_CENTER=createVector(110,Math.max(140,height-170));
 
-    // Hamburger toggles chrome (sliders included)
+    // Hamburger toggles only the bottom UI; HUD now always visible
     const menuBtn=document.getElementById('menuBtn'); let chromeShown=true;
     function setChromeShown(show){
       menuBtn.classList.toggle('active',!show);
       document.getElementById('ui').classList.toggle('hidden',!show);
-      document.getElementById('hud').classList.toggle('hidden',!show);
+
+      // show left-edge vertical slider for the active level only when UI is shown
       const l1spin=document.getElementById('l1SpinContainer');
-      if(l1spin) l1spin.style.display=(level===1 && show)?'flex':'none';
       const l2size=document.getElementById('l2SizeContainer');
+      if(l1spin) l1spin.style.display=(level===1 && show)?'flex':'none';
       if(l2size) l2size.style.display=(level===2 && show)?'flex':'none';
     }
     menuBtn.addEventListener('click',e=>{e.stopPropagation();chromeShown=!chromeShown;setChromeShown(chromeShown);});
@@ -301,7 +306,6 @@
       function apply(px){
         L2_TARGET_DIAM = Math.max(36, Math.min(120, px|0));
         label.textContent = `Target Ø: ${L2_TARGET_DIAM}px`;
-        // Keep current target clamped to screen when size changes
         if(level===2){
           const fit=fitTargetAtAngle(l2TargetAngle,l2TargetR, (L2_TARGET_DIAM/2)+24);
           l2TargetR=fit.r;
@@ -314,9 +318,10 @@
     // Canvas joystick + pinch zoom
     attachCanvasJoystickHandlers();
 
+    // Window + boot
     window.addEventListener('resize',windowResized);
 
-    setRoll(+1); setLevel(1); restart(); showGoal();
+    setRoll(+1); setLevel(1); restart(); showGoal(); // hint panel stays until “Got it”
     showJoyHint(JOY_HINT_MS);
 
     // draw loop (pause when hidden)
@@ -349,28 +354,39 @@
     document.getElementById('level1').classList.toggle('active',n===1);
     document.getElementById('level2').classList.toggle('active',n===2);
     document.getElementById('level3').classList.toggle('active',n===3);
+
+    // Score only on L1
+    const scoreEl = document.getElementById('score');
+    if (scoreEl) scoreEl.style.display = (n === 1) ? 'inline-block' : 'none';
+
+    // Per-level HUD visibility
     document.getElementById('level2hud').style.display=(n===2)?'flex':'none';
     document.getElementById('level3hud').style.display=(n===3)?'flex':'none';
+
+    // Top spin controls + L1 difficulty visibility
     document.getElementById('spinControls').style.display=(n===2||n===3)?'flex':'none';
     document.getElementById('l1Diff').style.display=(n===1)?'flex':'none';
 
-    // show left-edge vertical slider for the active level
+    // Left-edge vertical slider visibility depends on UI shown
     const l1spin=document.getElementById('l1SpinContainer');
     const l2size=document.getElementById('l2SizeContainer');
     const chromeShown=!document.getElementById('menuBtn').classList.contains('active');
     if(l1spin) l1spin.style.display=(n===1 && chromeShown)?'flex':'none';
     if(l2size) l2size.style.display=(n===2 && chromeShown)?'flex':'none';
 
+    // Update tempo label
     const spinRange=document.getElementById('spinRange'),spinValue=document.getElementById('spinValue'),spinLabelPrefix=document.getElementById('spinLabelPrefix');
     if(spinRange&&spinValue){const val=(n===2?L2_SPIN_PERIOD_MS:L3_SPIN_PERIOD_MS)/1000; spinRange.value=val.toFixed(2); spinValue.textContent=val.toFixed(2)+' s/rot'; spinLabelPrefix.textContent=(n===2?'L2 Spin':'L3 Spin');}
+    updateTempoTag();
 
-    /* ---- PATCH: Show L1 score only on Level 1 ---- */
-    const scoreEl = document.getElementById('score');
-    if (scoreEl) scoreEl.style.display = (n === 1) ? 'inline-block' : 'none';
-    /* --------------------------------------------- */
+    // Reset lives only when entering L3 from another level
+    if (n===3 && lastLevel!==3){ l3Lives = L3_LIVES_START; updateL3Hud(); }
 
-    updateTempoTag(); restart(); showGoal();
+    restart();
+    showGoal();  // persist until “Got it”
     showJoyHint(JOY_HINT_MS * 0.75);
+
+    lastLevel = n;
   }
 
   function setRoll(dir){airRoll=dir; document.getElementById('rollL').classList.toggle('active',dir<0); document.getElementById('rollR').classList.toggle('active',dir>0);}
@@ -379,34 +395,28 @@
   function goalTextFor(lv){
     if(lv===1) return {title:'Level 1 — Quick Aim',text:'A target spawns near the square. Flick toward it quickly. Your aim is averaged over a short window (earlier movement counts more), then judged against the target.'};
     if(lv===2) return {title:'Level 2 — Match the Spin',text:'The square spins. Use the joystick to aim your arrow at the yellow target. Hold on target long enough to lock it. The spin changes your aim — counter the rotation.'};
-    return {title:'Level 3 — Navigate the Course',text:'Push the joystick to set a heading relative to the spinning square. Avoid obstacles and reach the green goal before you run out of lives.'};
+    return {title:'Level 3 — Navigate the Course',text:'Push the joystick to set a heading relative to the spinning square. Avoid obstacles and reach the green goal. Lives only decrease on obstacle collisions.'};
   }
 
-  /* ===== Hint / Goal panel toggle ===== */
-  let goalHideTimer = null;
+  /* ===== Hint / Goal panel (persistent) ===== */
   let goalVisible = false;
 
-  function showGoal(force = false){
+  function showGoal(){
     const panel = document.getElementById('goalPanel');
     const { title, text } = goalTextFor(level);
     document.getElementById('goalTitle').textContent = title;
     document.getElementById('goalText').textContent = text;
-
     panel.classList.remove('hidden');
     goalVisible = true;
-
-    if (goalHideTimer) clearTimeout(goalHideTimer);
-    if (!force) goalHideTimer = setTimeout(() => { hideGoal(); }, GOAL_MS);
   }
 
   function hideGoal(){
     const panel=document.getElementById('goalPanel');
     panel.classList.add('hidden');
     goalVisible = false;
-    if (goalHideTimer){ clearTimeout(goalHideTimer); goalHideTimer=null; }
   }
 
-  function toggleGoal(){ if(goalVisible) hideGoal(); else showGoal(true); }
+  function toggleGoal(){ if(goalVisible) hideGoal(); else showGoal(); }
 
   document.getElementById('goalClose').addEventListener('click',(e)=>{e.stopPropagation();hideGoal();});
   document.getElementById('goalPanel').addEventListener('click',(e)=>{ if(e.target.id==='goalPanel') hideGoal(); });
@@ -472,7 +482,7 @@
   function restart(){
     joyActive=false; joyVec=null; smJoy.x=0; smJoy.y=0; arrowAngleRender=0;
     l1CapActive=false; l1CapStart=0; l1Cap={x:0,y:0,w:0};
-    l1HitDot=null; // clear on restart only
+    l1HitDot=null;
     const res=document.getElementById('result'); if(res) res.style.display='none';
 
     if(level===1){
@@ -482,7 +492,8 @@
       spawnL2Target();
       document.getElementById('aimTag').textContent='Aim —';
     } else {
-      l3Dist=0; l3Lives=L3_LIVES_START; l3ArrowActive=false;
+      // IMPORTANT: do not reset lives here; they persist
+      l3Dist=0; l3ArrowActive=false;
       l3Pos=createVector(width*0.5, height*0.75); l3Vel=createVector(0,0);
       generateCourse(); updateL3Hud();
     }
@@ -496,7 +507,6 @@
     let tries=0; while(l3Obstacles.length<L3_OBS_COUNT && tries<1000){
       tries++; const r=randRange(L3_OBS_R_MIN,L3_OBS_R_MAX);
       const x=randRange(L3_MARGIN+r,width-L3_MARGIN-r), y=randRange(L3_MARGIN+r+40,height-L3_MARGIN-r-120);
-      if(dist(x,y,l3Pos.x,l3Pos.y)<(r+160)) continue;
       if(dist(x,y,l3Goal.x,l3Goal.y)<(r+160)) continue;
       if(!farEnough(x,y,l3Obstacles,r)) continue;
       l3Obstacles.push({x,y,r});
@@ -727,6 +737,8 @@
 
   /* =================== Game Loop =================== */
   function draw(dt){
+    updateGamepad();
+
     const a=emaAlpha(dt,STICK_TAU_MS);
     const tx=(joyVec?joyVec.x:0), ty=(joyVec?joyVec.y:0);
     smJoy.x+=(tx-smJoy.x)*a; smJoy.y+=(ty-smJoy.y)*a;
@@ -768,7 +780,7 @@
       stroke('#5a5a5a');strokeWeight(2);line(center.x,center.y,target.x,target.y);
     }
 
-    // show last hit dot if active (with outline so it pops)
+    // show last hit dot if active
     if(l1HitDot && millis() < l1HitDot.until){
       stroke('#ffffff'); strokeWeight(3);
       fill('#53d769'); circle(l1HitDot.x, l1HitDot.y, 14);
@@ -847,20 +859,39 @@
     drawSquareColored(l3Pos,spin);
     if(head!=null){ const th=arrowAngleRender, col=arrowColorFor(th,spin); drawArrowWorld(l3Pos,th,col); }
 
-    // collisions
-    for(const o of l3Obstacles){ if(dist(l3Pos.x,l3Pos.y,o.x,o.y) < (SQUARE_HALF+4+o.r)){handleL3Crash();return;} }
-    if(dist(l3Pos.x,l3Pos.y,l3Goal.x,l3Goal.y) < (SQUARE_HALF+4+l3Goal.r)){handleL3Win();return;}
+    // collisions — SINGLE decrement + immediate restart
+    const now = millis();
+    if (now < l3CrashLockUntil) return; // debounce
+
+    for(const o of l3Obstacles){
+      if(dist(l3Pos.x,l3Pos.y,o.x,o.y) < (SQUARE_HALF+4+o.r)){
+        handleL3Crash(true);
+        return;
+      }
+    }
+    if(dist(l3Pos.x,l3Pos.y,l3Goal.x,l3Goal.y) < (SQUARE_HALF+4+l3Goal.r)){
+      handleL3Win();
+      return;
+    }
   }
 
-  function handleL3Crash(){
-    l3Lives--; updateL3Hud();
-    const r=document.getElementById('result'); if(r){r.textContent='Crash!'; r.className='tag bad'; r.style.display='inline-block';}
-    if(l3Lives<=0){setTimeout(()=>{restart();},650);}
-    else{setTimeout(()=>{l3Pos=createVector(width*.5,height*.75); l3Vel=createVector(0,0); const r=document.getElementById('result'); if(r) r.style.display='none';},650);}
+  function handleL3Crash(isObstacle){
+    const now = millis();
+    if (now < l3CrashLockUntil) return;
+    l3CrashLockUntil = now + 800; // guard against multi-hits before restart
+
+    if (isObstacle) {
+      l3Lives = Math.max(0, l3Lives - 1); // exactly one life per crash
+      updateL3Hud();
+    }
+    const r=document.getElementById('result');
+    if(r){r.textContent='Crash!'; r.className='tag bad'; r.style.display='inline-block';}
+    setTimeout(()=>{ restart(); }, 650);
   }
+
   function handleL3Win(){
     const r=document.getElementById('result'); if(r){r.textContent='Goal!'; r.className='tag good'; r.style.display='inline-block';}
-    setTimeout(()=>{restart();},800);
+    setTimeout(()=>{ restart(); }, 800);
   }
 
   function arrowColorFor(thWorld,spin){
@@ -871,8 +902,98 @@
     return COL_RIGHT;                                         // left (blue)
   }
 
+  /* =================== GAMEPAD SUPPORT (poll from draw) =================== */
+  const GP = {
+    index: -1,
+    deadzone: 0.15,
+    prevPressed: new Set(),
+    usingStick: false,
+    lastMag: 0
+  };
+
+  function gpGet() {
+    const pads = (navigator.getGamepads && navigator.getGamepads()) || [];
+    if (GP.index < 0) {
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i]) { GP.index = i; break; }
+      }
+    }
+    return (GP.index >= 0) ? pads[GP.index] : null;
+  }
+
+  addEventListener('gamepadconnected', (e) => { if (GP.index < 0) GP.index = e.gamepad.index; });
+  addEventListener('gamepaddisconnected', (e) => { if (e.gamepad.index === GP.index) GP.index = -1; });
+
+  function gpDeadzone(v, dz=GP.deadzone){
+    return Math.abs(v) < dz ? 0 : v;
+  }
+  function gpLeftStick(pad){
+    const lx = gpDeadzone(pad.axes[0] || 0);
+    const ly = gpDeadzone(pad.axes[1] || 0);
+    if (!lx && !ly) return {x:0,y:0,mag:0};
+    const m = Math.min(1, Math.hypot(lx, ly)) || 1;
+    const k = (m - GP.deadzone) / (1 - GP.deadzone);
+    const nx = (lx / m) * Math.max(0, k);
+    const ny = (ly / m) * Math.max(0, k);
+    return {x:nx, y:ny, mag:Math.hypot(nx, ny)};
+  }
+
+  function gpOnPress(pad, idx, fn){
+    const b = pad.buttons[idx];
+    const pressed = !!(b && (b.value || 0) > 0.5);
+    const key = `b${idx}`;
+    if (pressed && !GP.prevPressed.has(key)) { GP.prevPressed.add(key); try{fn();}catch{} }
+    else if (!pressed && GP.prevPressed.has(key)) { GP.prevPressed.delete(key); }
+  }
+
+  function updateGamepad(){
+    const pad = gpGet();
+    if (!pad) return;
+
+    // Left stick drives on-screen stick if the user isn’t touching/repositioning
+    if (!relocating && !joyActive) {
+      const {x, y, mag} = gpLeftStick(pad);
+      GP.lastMag = mag;
+      if (mag > 0) {
+        if (!GP.usingStick && level === 1 && !l1CapActive) l1StartCapture();
+        GP.usingStick = true;
+        joyVec = createVector(x * JOY_BASE_R, y * JOY_BASE_R);
+      } else if (GP.usingStick) {
+        if (level === 1 && l1CapActive) l1FinalizeCapture();
+        GP.usingStick = false;
+        joyVec = null;
+      }
+    }
+
+    // Buttons (standard-ish)
+    gpOnPress(pad, 4, () => setRoll(-1)); // L1
+    gpOnPress(pad, 5, () => setRoll(+1)); // R1
+    gpOnPress(pad, 1, () => restart());   // B / Circle
+    gpOnPress(pad, 0, () => toggleGoal()); // A / Cross
+    gpOnPress(pad, 2, () => {              // X / Square → Swap U/D
+      invertUD = !invertUD;
+      const b = document.getElementById('swapUD');
+      if (b) { b.classList.toggle('active', invertUD); b.textContent = invertUD ? 'Swap U/D: ON' : 'Swap U/D'; }
+    });
+    gpOnPress(pad, 3, () => setLevel((level % 3) + 1)); // Y / Triangle
+    gpOnPress(pad, 9, () => restart());                 // Start/Options
+
+    // D-pad (12 up, 13 down, 14 left, 15 right)
+    gpOnPress(pad, 12, () => setZoom(viewScale + 0.1));
+    gpOnPress(pad, 13, () => setZoom(viewScale - 0.1));
+    gpOnPress(pad, 14, () => setLevel(Math.max(1, level - 1)));
+    gpOnPress(pad, 15, () => setLevel(Math.min(3, level + 1)));
+
+    // Triggers (smooth zoom while held)
+    const lt = pad.buttons[6]?.value || 0;
+    const rt = pad.buttons[7]?.value || 0;
+    if (lt > 0.15 && rt < 0.15) setZoom(viewScale - 0.01);
+    if (rt > 0.15 && lt < 0.15) setZoom(viewScale + 0.01);
+  }
+
   /* =================== Boot =================== */
+  createCanvas(window.innerWidth,window.innerHeight); // ensure canvas exists behind HUD/UI
   setup();
   </script>
 </body>
-</html>>
+</html>
