@@ -206,9 +206,10 @@
   let l2StartMs=0,l2HoldMs=0,l2ArrowActive=false,l2ErrEma=0;
   let l3Pos,l3Goal,l3Obstacles=[],l3Lives=L3_LIVES_START,l3Dist=0,l3ArrowActive=false,l3Vel=null,l3CrashLockUntil=0;
 
-  // L1 averaged capture state + hit dot
+  // L1 averaged capture state + dots
   let l1CapActive=false, l1CapStart=0, l1Cap = {x:0,y:0,w:0};
-  let l1HitDot=null; // {x,y,until}
+  let l1HitDot=null;         // {x,y,until} — where your arrow tip landed
+  let l1PrevTargetDot=null;  // {x,y,until} — where the old target was
 
   // Hint state (bubble)
   let joyHintUntil=0;
@@ -661,11 +662,19 @@
     if(!l1CapActive) return;
     l1CapActive=false;
 
-    if(l1Cap.w<=0){ scoreTotal++; updateScore({text:'Miss',good:false}); spawnTarget(); updateScore(); return; }
+    if(l1Cap.w<=0){
+      scoreTotal++; updateScore({text:'Miss',good:false});
+      if (target) l1PrevTargetDot = {x: target.x, y: target.y, until: millis()+2500};
+      spawnTarget(); updateScore(); return;
+    }
 
     const avgx=l1Cap.x/l1Cap.w, avgy=l1Cap.y/l1Cap.w;
     const mag=Math.hypot(avgx,avgy);
-    if(mag<STICK_MIN_MAG*0.9){ scoreTotal++; updateScore({text:'Miss (weak flick)',good:false}); spawnTarget(); updateScore(); return; }
+    if(mag<STICK_MIN_MAG*0.9){
+      scoreTotal++; updateScore({text:'Miss (weak flick)',good:false});
+      if (target) l1PrevTargetDot = {x: target.x, y: target.y, until: millis()+2500};
+      spawnTarget(); updateScore(); return;
+    }
 
     l1EvaluateFromAveragedVector(avgx,avgy);
   }
@@ -689,6 +698,10 @@
     else{ updateScore({text:`Miss (${errDeg.toFixed(0)}°)`,good:false}); }
 
     updateScore();
+
+    // remember where the old target was before we spawn a new one
+    if (target) l1PrevTargetDot = {x: target.x, y: target.y, until: millis()+2500};
+
     spawnTarget();
   }
 
@@ -785,14 +798,20 @@
       stroke('#5a5a5a');strokeWeight(2);line(center.x,center.y,target.x,target.y);
     }
 
-    // show last hit dot if active
+    // previous target marker (yellow) fades after ~2.5s
+    if(l1PrevTargetDot && millis() < l1PrevTargetDot.until){
+      stroke('#ffffff'); strokeWeight(3);
+      fill('#ffd166'); circle(l1PrevTargetDot.x, l1PrevTargetDot.y, 12);
+    }
+
+    // last hit dot (green) if active
     if(l1HitDot && millis() < l1HitDot.until){
       stroke('#ffffff'); strokeWeight(3);
       fill('#53d769'); circle(l1HitDot.x, l1HitDot.y, 14);
     }
 
-    // arrow only while touching (visualization)
-    if(joyActive&&joyVec){
+    // arrow only while touching or using gamepad
+    if ((joyActive || GP.usingStick) && joyVec) {
       const raw=Math.atan2( (invertUD ? smJoy.y : -smJoy.y), smJoy.x);
       const thWorld=spin+mirrorY(raw);
       const col=arrowColorFor(thWorld,spin);
