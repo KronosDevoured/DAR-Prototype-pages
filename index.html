@@ -102,7 +102,7 @@
     <div id="result" class="tag" style="display:none;"></div>
 
     <div id="level2hud" style="display:none;">
-      <span class="tag" id="tempoTag">Tempo 1.15 s/rot</span>
+      <span class="tag" id="tempoTag">Tempo 1.20 s/rot</span>
       <span class="tag" id="aimTag">Aim —</span>
     </div>
 
@@ -142,8 +142,8 @@
 
       <div id="spinControls">
         <label for="spinRange"><span id="spinLabelPrefix">L2 Spin</span> (s/rot, min=1.15):</label>
-        <input id="spinRange" type="range" min="1.15" max="3.00" step="0.05" value="1.15" />
-        <span class="tag" id="spinValue">1.15 s/rot</span>
+        <input id="spinRange" type="range" min="1.15" max="3.00" step="0.05" value="1.20" />
+        <span class="tag" id="spinValue">1.20 s/rot</span>
       </div>
     </div>
   </div>
@@ -184,14 +184,18 @@
   // Target radius bands (applied to L1 and L2)
   const TARGET_R_MIN=140, TARGET_R_MAX=220;
 
-  // L2 tuning — target size is adjustable
-  let L2_SPIN_PERIOD_MS=1150;
-  const L2_TOL_DEG=10,L2_HOLD_MS=1500,ROUND_MS=10000;
+  // L2 tuning — more forgiving
+  let L2_SPIN_PERIOD_MS=1200;               // 1.20 s/rot default
+  const L2_TOL_DEG_ENTER=18;                // enter “lock” band
+  const L2_TOL_DEG_EXIT =24;                // hysteresis band (don’t drop lock too fast)
+  const L2_HOLD_MS      =1100;              // ~1.1s sustained lock to succeed
+  const ROUND_MS        =10000;
+  const L2_ERR_EMA_MS   =120;               // smooth the aim error a bit
   let L2_TARGET_DIAM=56;
   let l2TargetAngle=0, l2TargetR=180;
 
   // L3 tuning
-  let L3_SPIN_PERIOD_MS=1150,L3_GOAL_R=32,L3_LIVES_START=3;
+  let L3_SPIN_PERIOD_MS=1200,L3_GOAL_R=32,L3_LIVES_START=3;
   const L3_OBS_COUNT=5,L3_OBS_R_MIN=26,L3_OBS_R_MAX=48,L3_MARGIN=40,L3_MIN_GAP=140;
   let L3_MAX_SPEED=220,L3_ACCEL=520,L3_DAMPING_S=1.6;
 
@@ -199,7 +203,7 @@
   let airRoll=+1,center,level=1,lastLevel=1,JOY_CENTER,joyActive=false,joyVec=null,relocating=false;
   let smJoy={x:0,y:0},arrowAngleRender=0,lastFrameT,currentSpinAngle=0;
   let target=null,scoreHits=0,scoreTotal=0;
-  let l2StartMs=0,l2HoldMs=0,l2ArrowActive=false;
+  let l2StartMs=0,l2HoldMs=0,l2ArrowActive=false,l2ErrEma=0;
   let l3Pos,l3Goal,l3Obstacles=[],l3Lives=L3_LIVES_START,l3Dist=0,l3ArrowActive=false,l3Vel=null,l3CrashLockUntil=0;
 
   // L1 averaged capture state + hit dot
@@ -211,7 +215,7 @@
 
   // View (zoom)
   let viewScale = 1.0;
-  const VIEW_MIN = 0.5, VIEW_MAX = 1.5, VIEW_STEP = 0.1;
+  const VIEW_MIN = 0.25, VIEW_MAX = 2.0, VIEW_STEP = 0.1;
 
   // Pinch state
   const touches = new Map(); // id -> {x,y}
@@ -263,7 +267,7 @@
     // L2/L3 spin slider
     const spinRange=document.getElementById('spinRange'),spinValue=document.getElementById('spinValue'),spinLabelPrefix=document.getElementById('spinLabelPrefix');
     if(spinRange){
-      spinRange.value="1.15"; spinValue.textContent="1.15 s/rot"; spinLabelPrefix.textContent="L2 Spin";
+      spinRange.value="1.20"; spinValue.textContent="1.20 s/rot"; spinLabelPrefix.textContent="L2 Spin";
       spinRange.addEventListener('input',()=>{
         const s=Math.max(1.15,Math.min(3.0,parseFloat(spinRange.value)));
         if(level===2)L2_SPIN_PERIOD_MS=s*1000; else if(level===3)L3_SPIN_PERIOD_MS=s*1000;
@@ -394,7 +398,7 @@
 
   function goalTextFor(lv){
     if(lv===1) return {title:'Level 1 — Quick Aim',text:'A target spawns near the square. Flick toward it quickly. Your aim is averaged over a short window (earlier movement counts more), then judged against the target.'};
-    if(lv===2) return {title:'Level 2 — Match the Spin',text:'The square spins. Use the joystick to aim your arrow at the yellow target. Hold on target long enough to lock it. The spin changes your aim — counter the rotation.'};
+    if(lv===2) return {title:'Level 2 — Match the Spin',text:'The square spins. Use the joystick to aim your arrow at the yellow target. Keep it locked long enough — drifting a little is okay now.'};
     return {title:'Level 3 — Navigate the Course',text:'Push the joystick to set a heading relative to the spinning square. Avoid obstacles and reach the green goal. Lives only decrease on obstacle collisions.'};
   }
 
@@ -488,9 +492,10 @@
     if(level===1){
       scoreHits=0; scoreTotal=0; updateScore(); spawnTarget(); l1StartMs=millis();
     } else if(level===2){
-      l2StartMs=millis(); l2HoldMs=0; l2ArrowActive=false;
+      l2StartMs=millis(); l2HoldMs=0; l2ArrowActive=false; l2ErrEma=0;
       spawnL2Target();
       document.getElementById('aimTag').textContent='Aim —';
+      document.getElementById('aimTag').classList.remove('good');
     } else {
       // IMPORTANT: do not reset lives here; they persist
       l3Dist=0; l3ArrowActive=false;
@@ -805,6 +810,8 @@
     const tx=center.x+Math.cos(l2TargetAngle)*l2TargetR, ty=center.y+Math.sin(l2TargetAngle)*l2TargetR;
     noStroke();fill('#ffd166');circle(tx,ty,L2_TARGET_DIAM);
 
+    const aimEl = document.getElementById('aimTag');
+
     if(active){
       const thStick=Math.atan2( (invertUD ? smJoy.y : -smJoy.y), smJoy.x);
       const thTarget=spin+mirrorY(thStick);
@@ -814,15 +821,30 @@
       drawArrowWorld(center,thRender,col);
 
       let err=thRender-l2TargetAngle; while(err>Math.PI)err-=2*Math.PI; while(err<-Math.PI)err+=2*Math.PI;
-      const errDeg=Math.abs(degrees(err)); document.getElementById('aimTag').textContent=`Aim ${errDeg.toFixed(0)}°`;
-      if(errDeg<=L2_TOL_DEG) l2HoldMs+=dt; else l2HoldMs=0;
+      const errDeg=Math.abs(degrees(err));
+
+      // Smooth error & hysteresis/grace
+      const aErr = emaAlpha(dt, L2_ERR_EMA_MS);
+      l2ErrEma = (1 - aErr) * l2ErrEma + aErr * errDeg;
+
+      if (l2ErrEma <= L2_TOL_DEG_ENTER) {
+        l2HoldMs += dt;                     // build lock
+        if (aimEl){ aimEl.classList.add('good'); aimEl.textContent = `Aim ${errDeg.toFixed(0)}° ✓`; }
+      } else if (l2ErrEma <= L2_TOL_DEG_EXIT) {
+        l2HoldMs = Math.max(0, l2HoldMs - dt * 0.5); // gentle bleed
+        if (aimEl){ aimEl.classList.remove('good'); aimEl.textContent = `Aim ${errDeg.toFixed(0)}°`; }
+      } else {
+        l2HoldMs = Math.max(0, l2HoldMs - dt * 1.0); // faster bleed
+        if (aimEl){ aimEl.classList.remove('good'); aimEl.textContent = `Aim ${errDeg.toFixed(0)}°`; }
+      }
     } else {
-      l2HoldMs=0; l2ArrowActive=false; document.getElementById('aimTag').textContent='Aim —';
+      l2HoldMs=0; l2ArrowActive=false; if (aimEl){ aimEl.classList.remove('good'); aimEl.textContent='Aim —'; }
     }
 
     updateTempoTag();
     if(l2HoldMs>=L2_HOLD_MS || (t-l2StartMs>ROUND_MS)){
-      l2StartMs=millis(); l2HoldMs=0;
+      l2StartMs=millis(); l2HoldMs=0; l2ErrEma=0;
+      if (aimEl){ aimEl.classList.remove('good'); aimEl.textContent='Aim —'; }
       spawnL2Target();
     }
   }
